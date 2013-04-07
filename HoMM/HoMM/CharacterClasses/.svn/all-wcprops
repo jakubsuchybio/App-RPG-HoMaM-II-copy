@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses
+END
+Character.cs
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/Character.cs
+END
+Hero.cs
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/Hero.cs
+END
+AnimatedCharacter.cs
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/AnimatedCharacter.cs
+END
+Animation.cs
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/Animation.cs
+END
+AttributePair.cs
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/AttributePair.cs
+END
+Unit.cs
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/Unit.cs
+END
+GameKey.cs
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/GameKey.cs
+END
+AnimatedSprite.cs
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/CharacterClasses/AnimatedSprite.cs
+END

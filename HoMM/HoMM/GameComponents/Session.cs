@@ -1,0 +1,727 @@
+﻿using System;
+using System.Collections.Generic;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using HoMM.CharacterClasses;
+using HoMM.Libraries;
+using HoMM.Serialization;
+using HoMM.TileEngine;
+
+namespace HoMM.GameComponents
+{
+    public enum GameState
+    {
+        Stable,
+        Moving,
+        Battle
+    }
+    
+    public sealed class Session
+    {
+        #region Fields and Properties
+
+        private static Session instance = new Session();
+        public static Session Instance
+        {
+            get { return instance; }
+        }
+        public static string Message;
+
+        //Save/Load
+        public static GameSerialize GameData = new GameSerialize();
+        public static MapSerialize MapData = new MapSerialize();
+
+        //Game
+        static Rectangle viewportRect;
+        public static Rectangle ViewportRect
+        {
+            get { return viewportRect; }
+        }
+        public static Game1 GameRef;
+        public static Camera Camera;
+        public static GameState state;
+
+        //Map fieldy
+        public static Minimap minimap;
+        public static TileMap BackMap;
+        public static TileMap FrontMap;
+        public static MapProps MapProps;
+
+        //Fieldy pohybu
+        public static Stack<Mriz.Vrchol> path;
+        private static Vector2 startPosition;
+        private static Vector2 endPosition;
+        private static bool inMove;
+
+        //Fieldy hrdiny
+        public static AnimatedSprite playerSpriteHero;
+        public static Hero CurrentHero;
+        public static SpriteFont font;
+
+        //Fieldy jednotek
+        public static Dictionary<string, Unit> baseUnits;
+        public static List<Unit> Units;
+        public static Texture2D charTexture;
+
+        //Fieldy klicuu
+        public static Dictionary<int, GameKey> baseKeys;
+        public static List<GameKey> Keys;
+        public static Texture2D keyTexture;
+        
+        #endregion
+
+        #region Constructors
+
+        private Session() { }
+
+        #endregion
+
+        #region Methods
+
+        /// <summary>
+        /// Inicializace vsech potrebnych fielduu
+        /// </summary>
+        /// <param name="game"></param>
+        public void Initialize(Game game)
+        {
+            GameRef = (Game1)game;
+            Camera = new Camera(new Vector2(-24f,-24f));
+            viewportRect = new Rectangle(24, 24, 719, 720);
+            state = GameState.Stable;
+            path = null;
+            inMove = false;
+            path = new Stack<Mriz.Vrchol>();
+            Units = new List<Unit>();
+            Keys = new List<GameKey>();
+        }
+
+        /// <summary>
+        /// Vola vykresleni vsech vrstev map
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="spriteBatch"></param>
+        public static void DrawMap(GameTime gameTime, SpriteBatch spriteBatch)
+        {
+            BackMap.Draw(spriteBatch);
+            FrontMap.Draw(spriteBatch);
+        }
+
+        /// <summary>
+        /// Vola update vsech jednotek a klicu na mape
+        /// </summary>
+        /// <param name="gameTime"></param>
+        public static void UpdateMap(GameTime gameTime)
+        {
+            foreach (Unit item in Units)
+            {
+                item.Update(gameTime);
+            } 
+            foreach (GameKey item in Keys)
+            {
+                item.Update(gameTime);
+            }
+        }
+
+        /// <summary>
+        /// Nejkritictejsi cast kodu slouzici pro pohyb hrace. Komentar uvnitr.
+        /// </summary>
+        /// <param name="gameTime"></param>
+        public static void UpdateParty(GameTime gameTime)
+        {
+            if (!inMove)
+            {
+                //Pokud prave hero neni v pohybu a zasobnik oznameny cesty neni prazdny
+                if (path.Count != 0)
+                {
+                    //tak se nacte policko oznamene cesty, nastavi se startovni a koncova pozice,
+                    Mriz.Vrchol endp = path.Pop();
+                    startPosition = Session.CurrentHero.Position;
+                    endPosition = FrontMap.CellToVector(endp) + Camera.Position;
+
+                    //odectenim startovni pozice od koncovy ziskame smer cesty
+                    CurrentHero.Direction = endPosition - startPosition;
+
+                    //smer cesty musime znormalizovat aby postava sla normalni rychlosti
+                    if (Math.Abs(CurrentHero.Direction.X) >= 1)
+                        CurrentHero.Direction.X /= Math.Abs(CurrentHero.Direction.X);
+                    if (Math.Abs(CurrentHero.Direction.Y) >= 1)
+                        CurrentHero.Direction.Y /= Math.Abs(CurrentHero.Direction.Y);
+
+
+                    //Kdyz se narazi na nejaky objekt
+                    PathEngine.DeleteTile(CurrentHero.Cell);
+                    if (FrontMap.GetTile(endp).obj != null)
+                    {
+                        #region Narazeni na nejaky objekt(jednotku,klic,branu nebo konec)
+                        //Tak se zjisti co je to za objekt
+                        object obj = FrontMap.GetTile(endp).obj;
+                        if (obj is Unit)
+                        {
+                            //Kdyz je to jednotka, tak podle Notoriety se bud jednotka prida k hrdinovi a nebo hrdinu napadne
+                            Tile tmp = Session.FrontMap.GetTile(endp);
+                            Unit u = (Unit)tmp.obj;
+                            Session.Units.Remove(u);
+
+                            if (u.Notoriety == Notoriety.Enemy)
+                            {
+                                bool WhoWon;
+                                string log;
+                                SimulateTheFight(CurrentHero, u, out WhoWon, out log);
+                                if (WhoWon)
+                                {
+                                    state = GameState.Stable;
+                                    GameRef.screenManager.PushMessage(GameRef.GameOverMessage);
+                                }
+                                else
+                                {
+                                    Message = "Vyhral jsi!\n";// + log;
+                                    GameRef.screenManager.PushMessage(GameRef.MessageScreen);
+                                }
+                            }
+                            else if (u.Notoriety == Notoriety.Friend)
+                            {
+                                foreach (Unit item in CurrentHero.units)
+                                    if (item.Name == u.Name)
+                                    {
+                                        //Zlepseni hrdinovy jednotky jednotkou pridanou
+                                        item.Fuse(u as Character);
+                                        u = null;
+                                        break;
+                                    }
+                                if (u != null)
+                                {
+                                    //Pridani jednotky k hrdinovi (driv u nej nebyla)
+                                    CurrentHero.units.Add(u);
+                                    u.isInHero = true;
+                                }
+
+                                //Vyskoceni oznamovaciho okynka, ze se sebrala jednotka
+                                Message = "Sebral jsi jednotku.";
+                                GameRef.screenManager.PushMessage(GameRef.MessageScreen);
+                            }
+
+                            tmp.obj = null;
+                        }
+                        else if (obj is GameKey)
+                        {
+                            //Kdyz je to klic, tak se klic sebere a odstrani z mapy
+                            CurrentHero.keys.Add(((GameKey)obj).index);
+                            Tile tmp = Session.FrontMap.GetTile(endp);
+                            GameKey u = (GameKey)tmp.obj;
+                            Session.Keys.Remove(u);
+                            tmp.obj = null;
+                        }
+                        else if (obj is int)
+                        {
+                            //Kdyz je to brana
+                            Tile tmp = Session.FrontMap.GetTile(endp);
+                            if (CurrentHero.keys.Contains((int)tmp.obj))
+                            {
+                                // A hrdina ma klic, pak se brana otevre
+                                tmp.obj = null;
+                                FrontMap.mapLayers[1].SetTile(tmp.X, tmp.Y, -1, -1, true);
+                            }
+                            else
+                            {
+                                //A hrdina klic nema, pak brana zustane zavrena a oznami se to hraci
+                                Message = "Nemas klic od teto brany.";
+                                GameRef.screenManager.PushMessage(GameRef.MessageScreen);
+                            }
+                        }
+                        else if (obj is string)
+                        {
+                            //Kdyz je konec hry, tak je konec hry a nalezite se uzivatel odmeni okynkem s gratulaci :-)
+                            state = GameState.Stable;
+                            GameRef.screenManager.PushMessage(GameRef.TheEndMessage);
+                        }
+
+                        //Nejake dodelavky kdyz se najde nejaky objekt.
+                        //Smazani oznamovaciho policka cesty
+                        PathEngine.DeleteTile(new Point(endp.X, endp.Y));
+
+                        //Vymazani vsech dalsich oznamovacich policek z cestry
+                        while (path.Count != 0)
+                        {
+                            endp = path.Pop();
+                            PathEngine.DeleteTile(new Point(endp.X, endp.Y));
+                        }
+
+                        //Vycisteni cesty
+                        path.Clear();
+
+                        //A nastaveni konecne pozice na aktualni, protoze se na policko s objektem pohybovat nebudu
+                        endPosition = startPosition;
+                    }
+                        #endregion
+                    else
+                    {
+                        //Kdyz tam objekt neni, tak se nastavi pohyb a animace
+                        inMove = true;
+                        CurrentHero.Sprite.IsAnimating = true;
+                    }
+
+                }
+                else
+                {
+                    //Pokud uz neni v zasobniku dalsi policko pro posun
+                    //Vypne se animace hera
+                    CurrentHero.Sprite.IsAnimating = false;
+
+                    //Pro jistotu se vymaze cesta
+                    Session.path.Clear();
+
+                    //Nastavi se normalni stav hry
+                    state = GameState.Stable;
+
+                    //Pro jistotu se nastavi presna konecna pozice hera
+                    CurrentHero.Position = endPosition;
+
+                    //A vymaze oznamene policko cesty pod hrdinou
+                    PathEngine.DeleteTile(CurrentHero.Cell);
+                }
+            }
+            else 
+            {
+                //Kdyz je hrdina v pohybu
+                if (CurrentHero.isOnPosition(endPosition))
+                {
+                    //Kdyz hrdina dosel na urcenou pozici
+                    //Nastavi se pohyb na vypnuty a pro jistotu se aktualizuje hrdinova pozice
+                    inMove = false;
+                    CurrentHero.Position = endPosition;
+                }
+                else
+                    //Pokud je hrdina v pohybu tak se proste a jednoduse pohne smerem kam se pohnout ma
+                    CurrentHero.Position += CurrentHero.Sprite.Speed * CurrentHero.Direction;
+            }
+
+            //Uchyti kameru na hrdinu a jde s nim
+            Session.Camera.LockToSprite(CurrentHero);
+
+            //Uzamkne kameru na okraje mapy
+            Session.Camera.LockCamera();
+
+            //Updatne hrdinu
+            CurrentHero.Update(gameTime);
+        }
+
+        /// <summary>
+        /// Vykresleni hrdiny
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="spriteBatch"></param>
+        public static void DrawHero(GameTime gameTime, SpriteBatch spriteBatch)
+        {
+            CurrentHero.Draw(gameTime, spriteBatch);
+        }
+
+        /// <summary>
+        /// Vykresleni vsech informaci o hrdinovi (klice a jednotky)
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="spriteBatch"></param>
+        public static void DrawHeroStuff(GameTime gameTime, SpriteBatch spriteBatch)
+        {
+            if (CurrentHero.keys.Contains(1))
+                spriteBatch.Draw(keyTexture, new Rectangle(770, 285, 55, 55), new Rectangle(0, 160, 32, 32), Color.White);
+            else
+                spriteBatch.Draw(keyTexture, new Rectangle(770, 285, 55, 55), new Rectangle(0, 128, 32, 32), Color.White);
+
+            if (CurrentHero.keys.Contains(2))
+                spriteBatch.Draw(keyTexture, new Rectangle(825, 285, 55, 55), new Rectangle(32, 160, 32, 32), Color.White);
+            else
+                spriteBatch.Draw(keyTexture, new Rectangle(825, 285, 55, 55), new Rectangle(0, 128, 32, 32), Color.White);
+
+            if (CurrentHero.keys.Contains(3))
+                spriteBatch.Draw(keyTexture, new Rectangle(880, 285, 55, 55), new Rectangle(64, 160, 32, 32), Color.White);
+            else
+                spriteBatch.Draw(keyTexture, new Rectangle(880, 285, 55, 55), new Rectangle(0, 128, 32, 32), Color.White);
+
+            if (CurrentHero.keys.Contains(4))
+                spriteBatch.Draw(keyTexture, new Rectangle(935, 285, 55, 55), new Rectangle(96, 160, 32, 32), Color.White);
+            else
+                spriteBatch.Draw(keyTexture, new Rectangle(935, 285, 55, 55), new Rectangle(0, 128, 32, 32), Color.White);
+
+
+            Texture2D FrameTexture = new Texture2D(Session.GameRef.GraphicsDevice, 110, 125, false, SurfaceFormat.Color);
+            Color[] color = new Color[110 * 125];
+            for (int i = 0; i < color.Length; i++)
+            {
+                color[i] = Color.White;
+            }
+            FrameTexture.SetData(color);
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 2; j++)
+                {
+                    spriteBatch.Draw(FrameTexture, new Vector2(770 + j * 115, 350 + i * 130), Color.White);
+                }
+            }
+
+            for (int i = 0; i < 6; i++)
+			{
+			 if(i<CurrentHero.units.Count)
+                 CurrentHero.units[i].DrawInHero(gameTime, spriteBatch);
+             else
+                 switch (i)
+                 {
+                     case 0:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(795, 390), Color.Black);
+                             break;
+                         }
+                     case 1:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(910, 390), Color.Black); 
+                             break;
+                         }
+                     case 2:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(795, 520), Color.Black);
+                             break;
+                         }
+                     case 3:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(910, 520), Color.Black);
+                             break;
+                         }
+                     case 4:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(795, 650), Color.Black);
+                             break;
+                         }
+                     case 5:
+                         {
+                             spriteBatch.DrawString(font, "    Zde\n   neni\njednotka", new Vector2(910, 650), Color.Black);
+                             break;
+                         }
+                 }
+			}
+        }
+
+        /// <summary>
+        /// Metoda slouzici pro ulozeni hry
+        /// </summary>
+        /// <param name="gamename"></param>
+        public static void SaveGame(string gamename)
+        {
+            Session.GameData = new GameSerialize();
+            Session.GameData.mapName = "map.xml";
+            Session.GameData.hero = Session.CurrentHero;
+            Session.GameData.cam = Session.Camera;
+            Session.GameData.keys = Session.Keys;
+            Session.GameData.units = Session.Units;
+            Session.GameData.frontSplatter = Session.FrontMap.mapLayers[1];
+
+            try
+            {
+                Serializer ser = new Serializer();
+                ser.SerializeGame(gamename, Session.GameData);
+            }
+            catch (Exception ex)
+            {
+                string message = ex.Message;
+
+            }
+        }
+
+        /// <summary>
+        /// Metoda slouzici pro nahrani hry
+        /// </summary>
+        /// <param name="gamename"></param>
+        public static void LoadGame(string gamename)
+        {
+            GameSerialize ob = new GameSerialize();
+            try
+            {
+                Serializer ser = new Serializer();
+                ob = ser.DeSerializeGame(gamename);
+                LoadMapAndTextures(ob.mapName);
+                LoadHeroSprite(ob.hero.Gender);
+
+                //Overrides Units loaded from MapSerialize
+                Units = new List<Unit>();
+                foreach (Unit item in ob.units)
+                {
+                    Unit klon = baseUnits[item.Name].Clone(item.Notoriety, item.Cell.X, item.Cell.Y);
+                    Session.FrontMap.GetTile(item.Cell).obj = klon;
+                    Units.Add(klon);
+                }
+
+                //Overrides Keys loaded from MapSerialize
+                Keys = new List<GameKey>();
+                foreach (GameKey item in ob.keys)
+                {
+                    GameKey klon = baseKeys[item.index].Clone(item.Cell.X, item.Cell.Y);
+                    Session.FrontMap.GetTile(item.Cell).obj = klon;
+                    Keys.Add(klon);
+                }
+
+                MapLayer frontPath = new MapLayer(Session.MapProps.FrontSizeX, Session.MapProps.FrontSizeY);
+                for (int y = 0; y < frontPath.Height; y++)
+                {
+                    for (int x = 0; x < frontPath.Width; x++)
+                    {
+                        Tile tile = new Tile(-1, -1, y, x);
+                        frontPath.SetTile(x, y, tile);
+                    }
+                }
+                Session.FrontMap.mapLayers.Add(frontPath);
+
+
+                Session.CurrentHero = new Hero(ob.hero, playerSpriteHero); 
+                Session.CurrentHero.units = new List<Unit>();
+                foreach (Unit item in ob.hero.units)
+                {
+                    Session.CurrentHero.units.Add(baseUnits[item.Name].Clone(item.Notoriety, item.Cell.X, item.Cell.Y, item.Attack, item.Defense, item.HitPoints, item.isInHero));
+                }
+                Session.Camera = ob.cam;
+                Session.FrontMap.mapLayers[1] = ob.frontSplatter;
+            }
+            catch (Exception ex)
+            {
+                string message = ex.Message;
+
+            }
+        }
+
+        /// <summary>
+        /// Metoda pro ulozeni mapy
+        /// </summary>
+        public static void SaveMap()
+        {
+            Session.MapData = new MapSerialize();
+            Session.MapData.keys = Session.Keys;
+            Session.MapData.units = Session.Units;
+            Session.MapData.mapProps = Session.MapProps;
+            Session.MapData.backLayer = BackMap.mapLayers[0];
+            Session.MapData.backSplatter = BackMap.mapLayers[1];
+            Session.MapData.frontLayer = FrontMap.mapLayers[0];
+            Session.MapData.frontSplatter = FrontMap.mapLayers[1];
+
+            try
+            {
+                Serializer ser = new Serializer();
+                ser.SerializeMap("map.xml", Session.MapData);
+            }
+            catch (Exception ex)
+            {
+                string message = ex.Message;
+
+            }
+        }
+
+        /// <summary>
+        /// Metoda pro nahrani vsech map a textur a vsech defaultnich veci
+        /// </summary>
+        /// <param name="mapName"></param>
+        public static void LoadMapAndTextures(string mapName)
+        {
+            //Nahrani mapy
+            #region Tile Sets
+            font = GameRef.Content.Load<SpriteFont>(@"Fonts\editorFont");
+
+            Texture2D tilesetTexture = GameRef.Content.Load<Texture2D>(@"Tiles\walkable");
+            tilesetTexture.Name = "Walkable";
+            Tileset tileset1 = new Tileset(tilesetTexture, 10, 10, 32, 32);
+            tilesetTexture = GameRef.Content.Load<Texture2D>(@"Tiles\tileset2");
+            tilesetTexture.Name = "tileset2";
+            Tileset tileset2 = new Tileset(tilesetTexture, 10, 10, 32, 32);
+            List<Tileset> tilesets = new List<Tileset>();
+            tilesets.Add(tileset1);
+            tilesets.Add(tileset2);
+
+            Texture2D pathSetText = GameRef.Content.Load<Texture2D>(@"Tiles\pathSet");
+            pathSetText.Name = "pathSet";
+            Tileset pathSet = new Tileset(pathSetText, 5, 5, 32, 32);
+            tilesets.Add(pathSet);
+
+            charTexture = GameRef.Content.Load<Texture2D>(@"Sprites\characterSet");
+            keyTexture = GameRef.Content.Load<Texture2D>(@"Sprites\keySet");
+
+            #endregion
+
+            Serializer ser = new Serializer();
+            MapSerialize ob = ser.DeSerializeMap(mapName);
+            Session.MapProps = ob.mapProps;
+
+            #region Back Map
+
+            List<MapLayer> backlayers = new List<MapLayer>();
+            backlayers.Add(ob.backLayer);
+            backlayers.Add(ob.backSplatter);
+            Session.BackMap = new TileMap(tilesets, backlayers, Session.MapProps.BackSizeX, Session.MapProps.BackSizeY, Session.MapProps.BackEngineX, Session.MapProps.BackEngineY);
+
+            #endregion
+
+            #region FrontMap
+
+            List<MapLayer> frontlayers = new List<MapLayer>();
+            frontlayers.Add(ob.frontLayer);
+            frontlayers.Add(ob.frontSplatter);
+            Session.FrontMap = new TileMap(tilesets, frontlayers, Session.MapProps.FrontSizeX, Session.MapProps.FrontSizeY, Session.MapProps.FrontEngineX, Session.MapProps.FrontEngineY);
+
+            #endregion
+
+            Session.FrontMap.mapLayers[0].map[25, 7].obj = 1;
+            Session.FrontMap.mapLayers[0].map[17, 25].obj = 2;
+            Session.FrontMap.mapLayers[0].map[12, 31].obj = 3;
+            Session.FrontMap.mapLayers[0].map[26, 34].obj = 4;
+            Session.FrontMap.mapLayers[0].map[49, 17].obj = "The End";
+
+            LoadBases();
+
+            Units = new List<Unit>();
+            foreach (Unit item in ob.units)
+            {
+                Units.Add(baseUnits[item.Name].Clone(item.Notoriety, item.Cell.X, item.Cell.Y));
+            }
+
+            Keys = new List<GameKey>();
+            foreach (GameKey item in ob.keys)
+            {
+                Keys.Add(baseKeys[item.index].Clone(item.Cell.X, item.Cell.Y));
+            }
+        }
+
+        /// <summary>
+        /// Nacteni hrdinovejch textur a animaci
+        /// </summary>
+        /// <param name="gender"></param>
+        public static void LoadHeroSprite(string gender)
+        {
+            //Nahrani hera
+            #region Hero load
+            Texture2D playerTexture;
+            if (gender == "Male")
+                playerTexture = GameRef.Content.Load<Texture2D>(@"Sprites\malefighter");
+            else
+                playerTexture = GameRef.Content.Load<Texture2D>(@"Sprites\femalefighter");
+
+            Dictionary<AnimationKey, Animation>  animations = new Dictionary<AnimationKey, Animation>();
+            Animation animation = new Animation(3, 32, 32, 0, 0);
+            animations.Add(AnimationKey.Down, animation);
+            animation = new Animation(3, 32, 32, 0, 32);
+            animations.Add(AnimationKey.Left, animation);
+            animation = new Animation(3, 32, 32, 0, 64);
+            animations.Add(AnimationKey.Right, animation);
+            animation = new Animation(3, 32, 32, 0, 96);
+            animations.Add(AnimationKey.Up, animation);
+            playerSpriteHero = new AnimatedSprite(playerTexture, animations);
+            playerSpriteHero.IsAnimating = false;
+
+            #endregion
+        }
+
+        /// <summary>
+        /// Nacteni vsech textur a animaci jednotek
+        /// </summary>
+        public static void LoadBases()
+        {
+            List<AnimatedSprite> sprites = new List<AnimatedSprite>();
+            baseUnits = new Dictionary<string, Unit>();
+            baseKeys = new Dictionary<int, GameKey>();
+            for (int k = 0; k < 3; k++)
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    AnimatedSprite sprite;
+                    Dictionary<AnimationKey, Animation> animations = new Dictionary<AnimationKey, Animation>();
+                    Animation animation;
+                    animation = new Animation(2, 32, 32, i * 64, k * 128 + 0);
+                    animations.Add(AnimationKey.Up, animation);
+                    animation = new Animation(2, 32, 32, i * 64, k * 128 + 32);
+                    animations.Add(AnimationKey.Right, animation);
+                    animation = new Animation(2, 32, 32, i * 64, k * 128 + 64);
+                    animations.Add(AnimationKey.Down, animation);
+                    animation = new Animation(2, 32, 32, i * 64, k * 128 + 96);
+                    animations.Add(AnimationKey.Left, animation);
+                    sprite = new AnimatedSprite(charTexture, animations);
+                    sprites.Add(sprite);
+                }
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                AnimatedSprite sprite;
+                Dictionary<AnimationKey, Animation> animations = new Dictionary<AnimationKey, Animation>();
+                Animation animation;
+                animation = new Animation(4, 32, 32, 0, i * 32);
+                animations.Add(AnimationKey.Down, animation);
+                sprite = new AnimatedSprite(keyTexture, animations);
+                sprites.Add(sprite);
+            }
+            baseUnits.Add("zena1", new Unit("zena1", 0, 0, sprites[0], 0, 0, new AttributePair(50)));
+            baseUnits.Add("zena2", new Unit("zena2", 0, 0, sprites[1], 0, 0, new AttributePair(50)));
+            baseUnits.Add("kaspar", new Unit("kaspar", 0, 0, sprites[2], 0, 0, new AttributePair(50)));
+            baseUnits.Add("vdova", new Unit("vdova", 0, 0, sprites[3], 0, 0, new AttributePair(50)));
+            baseUnits.Add("cernokneznik", new Unit("cernokneznik", 0, 0, sprites[4], 0, 0, new AttributePair(50)));
+            baseUnits.Add("hunac", new Unit("hunac", 0, 0, sprites[5], 0, 0, new AttributePair(50)));
+            baseUnits.Add("sliz", new Unit("sliz", 0, 0, sprites[6], 0, 0, new AttributePair(50)));
+            baseUnits.Add("krab", new Unit("krab", 0, 0, sprites[7], 0, 0, new AttributePair(50)));
+            baseUnits.Add("motyl", new Unit("motyl", 0, 0, sprites[8], 0, 0, new AttributePair(50)));
+            baseUnits.Add("ptak", new Unit("ptak", 0, 0, sprites[9], 0, 0, new AttributePair(50)));
+            baseUnits.Add("hroch", new Unit("hroch", 0, 0, sprites[10], 0, 0, new AttributePair(50)));
+            baseUnits.Add("moucha", new Unit("moucha", 0, 0, sprites[11], 0, 0, new AttributePair(50)));
+            baseUnits.Add("moucha1", new Unit("moucha", 0, 0, sprites[11], 0, 0, new AttributePair(50)));
+            baseUnits.Add("moucha2", new Unit("moucha", 0, 0, sprites[11], 0, 0, new AttributePair(50)));
+            baseUnits.Add("hydra", new Unit("hydra", 0, 0, sprites[12], 0, 0, new AttributePair(50)));
+            baseUnits.Add("srdce", new Unit("srdce", 0, 0, sprites[13], 0, 0, new AttributePair(50)));
+            baseUnits.Add("rohac", new Unit("rohac", 0, 0, sprites[14], 0, 0, new AttributePair(50)));
+            baseUnits.Add("zena3", new Unit("zena3", 0, 0, sprites[15], 0, 0, new AttributePair(50)));
+            baseUnits.Add("bilokneznik", new Unit("bilokneznik", 0, 0, sprites[16], 0, 0, new AttributePair(50)));
+            baseUnits.Add("meduza", new Unit("meduza", 0, 0, sprites[17], 0, 0, new AttributePair(50)));
+            baseUnits.Add("meduzak", new Unit("meduzak", 0, 0, sprites[18], 0, 0, new AttributePair(50)));
+            baseUnits.Add("smrt", new Unit("smrt", 15, 10, sprites[19], 0, 0, new AttributePair(50)));
+            baseUnits.Add("lizard1", new Unit("lizard1", 0, 0, sprites[20], 0, 0, new AttributePair(50)));
+            baseUnits.Add("lizard2", new Unit("lizard2", 0, 0, sprites[21], 0, 0, new AttributePair(50)));
+            baseUnits.Add("demon", new Unit("demon", 0, 0, sprites[22], 0, 0, new AttributePair(50)));
+            baseUnits.Add("pes", new Unit("pes", 0, 0, sprites[23], 0, 0, new AttributePair(50)));
+            baseUnits.Add("kytka", new Unit("kytka", 0, 0, sprites[24], 0, 0, new AttributePair(50)));
+            baseUnits.Add("kostlivec", new Unit("kostlivec", 0, 0, sprites[25], 0, 0, new AttributePair(50)));
+            baseUnits.Add("poutnik", new Unit("poutnik", 0, 0, sprites[26], 0, 0, new AttributePair(50)));
+            baseUnits.Add("drak", new Unit("drak", 0, 0, sprites[27], 0, 0, new AttributePair(50)));
+            baseUnits.Add("diamant", new Unit("diamant", 0, 0, sprites[28], 0, 0, new AttributePair(50)));
+            baseUnits.Add("kentaur", new Unit("kentaur", 0, 0, sprites[29], 0, 0, new AttributePair(50)));
+            baseKeys.Add(1, new GameKey(1, sprites[30], 0, 0));
+            baseKeys.Add(2, new GameKey(2, sprites[31], 0, 0));
+            baseKeys.Add(3, new GameKey(3, sprites[32], 0, 0));
+            baseKeys.Add(4, new GameKey(4, sprites[33], 0, 0));
+        }
+
+        /// <summary>
+        /// Jadro simulace boje dvou stran
+        /// </summary>
+        public static void SimulateTheFight(Hero left, Unit right, out bool whowon, out string LOG)
+        {
+            LOG = "";
+            Random x = new Random();
+            int WhoStarts = x.Next(0,2);
+            while (!right.isDead && left.units.Count != 0)
+            {
+                int index = x.Next(0, left.units.Count);
+                if (WhoStarts == 0)
+                {
+                    ushort dmg = (left.units[index].Attack - right.Defense > 0) ? (ushort)(left.units[index].Attack - right.Defense) : (ushort)1;
+                    right.HitPoints.Damage(dmg);
+                    LOG += "Ubral jste nepriteli " + dmg + " zivotu\n";
+                    WhoStarts = 1;
+                }
+                else
+                {
+                    ushort dmg = (right.Attack - left.units[index].Defense > 0) ? (ushort)(right.Attack - left.units[index].Defense) : (ushort)1;
+                    left.units[index].HitPoints.Damage(dmg);
+                    LOG += "Nepritel ubral " + left.units[index].Name + " " + dmg + " zivotu\n";
+                    WhoStarts = 0;
+                }
+                left.CheckUnits();
+            } 
+            if (right.isDead)
+                whowon = false;
+            else
+                whowon = true;
+
+        }
+
+        #endregion
+    }
+}

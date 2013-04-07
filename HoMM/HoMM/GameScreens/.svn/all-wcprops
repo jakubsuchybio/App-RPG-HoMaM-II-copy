@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens
+END
+endMessage.cs
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/endMessage.cs
+END
+TheEndMessage.cs
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/TheEndMessage.cs
+END
+StartScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/StartScreen.cs
+END
+GamePlayScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/GamePlayScreen.cs
+END
+LoadScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/LoadScreen.cs
+END
+CharacterGeneratorScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/CharacterGeneratorScreen.cs
+END
+MessageScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/MessageScreen.cs
+END
+EditorScreen.cs
+K 25
+svn:wc:ra_dav:version-url
+V 68
+/svn/Zapoctak/!svn/ver/35/HoMM/HoMM/HoMM/GameScreens/EditorScreen.cs
+END

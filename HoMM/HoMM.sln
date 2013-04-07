@@ -1,0 +1,24 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HoMM", "HoMM\HoMM\HoMM.csproj", "{37C77181-7062-40BE-A3A9-321B7D3BFDA9}"
+EndProject
+Project("{96E2B04D-8817-42C6-938A-82C39BA4D311}") = "HoMMContent", "HoMM\HoMMContent\HoMMContent.contentproj", "{1EE2B986-236B-4CA2-824D-45A90BF66FF1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37C77181-7062-40BE-A3A9-321B7D3BFDA9}.Debug|x86.ActiveCfg = Debug|x86
+		{37C77181-7062-40BE-A3A9-321B7D3BFDA9}.Debug|x86.Build.0 = Debug|x86
+		{37C77181-7062-40BE-A3A9-321B7D3BFDA9}.Release|x86.ActiveCfg = Release|x86
+		{37C77181-7062-40BE-A3A9-321B7D3BFDA9}.Release|x86.Build.0 = Release|x86
+		{1EE2B986-236B-4CA2-824D-45A90BF66FF1}.Debug|x86.ActiveCfg = Debug|x86
+		{1EE2B986-236B-4CA2-824D-45A90BF66FF1}.Release|x86.ActiveCfg = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

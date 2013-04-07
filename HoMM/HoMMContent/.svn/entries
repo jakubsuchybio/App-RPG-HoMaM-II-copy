@@ -1,0 +1,89 @@
+10
+
+dir
+36
+https://bio-pc:8443/svn/Zapoctak/HoMM/HoMM/HoMMContent
+https://bio-pc:8443/svn/Zapoctak
+
+
+
+2011-09-19T13:42:08.752134Z
+33
+Bio
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+e2c4ec43-4052-d84c-8489-cbae8bef2161
+
+HoMMContent.contentproj
+file
+
+
+
+
+2011-09-20T08:50:22.611608Z
+8b2e83e61e30ade25d06ef792dd9a49a
+2011-09-19T13:42:08.752134Z
+33
+Bio
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+8530
+
+Maps
+dir
+
+Tiles
+dir
+
+Backgrounds
+dir
+
+Controls
+dir
+
+bin
+dir
+
+Fonts
+dir
+
+Sprites
+dir
+
+obj
+dir
+
+Pictures
+dir
+
